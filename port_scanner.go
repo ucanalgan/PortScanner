@@ -5,15 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
 )
 
 type Config struct {
-	Timeout           time.Duration
-	UseSSL            bool
-	MaxBannerLength   int
+	Timeout         time.Duration
+	UseSSL          bool
+	MaxBannerLength int
 }
 
 type PortScanner struct {
@@ -33,7 +34,6 @@ func (ps *PortScanner) ValidateInputs() error {
 }
 
 func (ps *PortScanner) getService(port int) string {
-	// Simple mapping for common ports
 	common := map[int]string{
 		80:  "http",
 		443: "https",
@@ -53,8 +53,7 @@ func (ps *PortScanner) retrieveBanner(conn net.Conn) string {
 	if err != nil {
 		return "No banner"
 	}
-	banner := string(buf[:n])
-	return strings.TrimSpace(banner)
+	return strings.TrimSpace(string(buf[:n]))
 }
 
 func (ps *PortScanner) scanPort(port int, wg *sync.WaitGroup, results chan<- string) {
@@ -65,7 +64,6 @@ func (ps *PortScanner) scanPort(port int, wg *sync.WaitGroup, results chan<- str
 	var err error
 
 	if ps.Config.UseSSL && port == 443 {
-		// Wrap connection in TLS for secure scanning
 		conn, err = tls.DialWithDialer(&dialer, "tcp", address, &tls.Config{InsecureSkipVerify: true})
 	} else {
 		conn, err = dialer.Dial("tcp", address)
@@ -84,7 +82,6 @@ func (ps *PortScanner) RunScan() {
 	fmt.Printf("Scanning target: %s\n", ps.Target)
 	fmt.Printf("Time started: %s\n", time.Now().Format(time.RFC3339))
 	fmt.Printf("Scanning ports from %d to %d\n", ps.StartPort, ps.EndPort)
-
 	var wg sync.WaitGroup
 	results := make(chan string, ps.EndPort-ps.StartPort+1)
 	for port := ps.StartPort; port <= ps.EndPort; port++ {
@@ -105,18 +102,20 @@ func main() {
 	target := flag.String("target", "", "Target IP address")
 	startPort := flag.Int("start", 1, "Start port")
 	endPort := flag.Int("end", 1024, "End port")
+	timeout := flag.Int("timeout", 1, "Timeout in seconds")
 	useSSL := flag.Bool("ssl", false, "Use SSL/TLS for secure connection (only for port 443)")
+	maxBannerLength := flag.Int("maxBannerLength", 1024, "Maximum banner length")
 	flag.Parse()
 
 	if *target == "" {
 		fmt.Println("Please provide a target IP address using -target")
-		return
+		os.Exit(1)
 	}
 
 	config := Config{
-		Timeout:         1 * time.Second,
+		Timeout:         time.Duration(*timeout) * time.Second,
 		UseSSL:          *useSSL,
-		MaxBannerLength: 1024,
+		MaxBannerLength: *maxBannerLength,
 	}
 	scanner := PortScanner{
 		Target:    *target,
@@ -126,7 +125,7 @@ func main() {
 	}
 	if err := scanner.ValidateInputs(); err != nil {
 		fmt.Println("Error:", err)
-		return
+		os.Exit(1)
 	}
 	scanner.RunScan()
 }

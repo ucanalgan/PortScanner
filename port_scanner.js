@@ -1,24 +1,40 @@
+#!/usr/bin/env node
 const net = require('net');
 const tls = require('tls');
+const { program } = require('commander');
+
+program
+  .requiredOption('-t, --target <target>', 'Target IP address')
+  .requiredOption('-s, --start <number>', 'Start port', parseInt)
+  .requiredOption('-e, --end <number>', 'End port', parseInt)
+  .option('--timeout <number>', 'Socket timeout in milliseconds', 1000)
+  .option('--maxBannerLength <number>', 'Maximum banner length', 1024)
+  .option('--ssl', 'Use SSL for secure connection (port 443)', false);
+
+program.parse(process.argv);
+const options = program.opts();
+
+function validateIP(ip) {
+  const ipRegex = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){2}(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+  return ipRegex.test(ip);
+}
+if (!validateIP(options.target)) {
+  console.error(`Invalid IP address: ${options.target}`);
+  process.exit(1);
+}
+if (options.start < 1 || options.end > 65535 || options.start > options.end) {
+  console.error(`Invalid port range: ${options.start}-${options.end}`);
+  process.exit(1);
+}
 
 class PortScanner {
-  constructor(target, startPort, endPort, config = {}) {
+  constructor(target, startPort, endPort, config) {
     this.target = target;
     this.startPort = startPort;
     this.endPort = endPort;
-    this.timeout = config.timeout || 1000;
-    this.maxBannerLength = config.maxBannerLength || 1024;
-    this.useSSL = config.useSSL || false;
-  }
-
-  validateInputs() {
-    const ipRegex = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)\.((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){2}(25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
-    if (!ipRegex.test(this.target)) {
-      throw new Error(`Invalid IP address: ${this.target}`);
-    }
-    if (this.startPort < 1 || this.endPort > 65535 || this.startPort > this.endPort) {
-      throw new Error(`Invalid port range: ${this.startPort}-${this.endPort}`);
-    }
+    this.timeout = parseInt(config.timeout);
+    this.maxBannerLength = parseInt(config.maxBannerLength);
+    this.useSSL = config.ssl;
   }
 
   getService(port) {
@@ -49,7 +65,6 @@ class PortScanner {
         ? tls.connect(options, () => socket.setTimeout(this.timeout))
         : net.createConnection(options);
       let resolved = false;
-
       socket.setTimeout(this.timeout);
       socket.on('connect', async () => {
         const service = this.getService(port);
@@ -91,19 +106,9 @@ class PortScanner {
   }
 }
 
-// Command-line execution
-if (require.main === module) {
-  const args = process.argv.slice(2);
-  if (args.length !== 3) {
-    console.error("Usage: node portScanner.js <target> <startPort> <endPort>");
-    process.exit(1);
-  }
-  const [target, startPort, endPort] = args;
-  try {
-    const scanner = new PortScanner(target, parseInt(startPort), parseInt(endPort));
-    scanner.validateInputs();
-    scanner.runScan();
-  } catch (e) {
-    console.error("Error:", e.message);
-  }
-}
+const scanner = new PortScanner(options.target, options.start, options.end, {
+  timeout: options.timeout,
+  maxBannerLength: options.maxBannerLength,
+  ssl: options.ssl,
+});
+scanner.runScan();
