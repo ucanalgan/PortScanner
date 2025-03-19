@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,11 +22,11 @@ type Config struct {
 }
 
 type PortScanner struct {
-	Target           string
+	Target             string
 	StartPort, EndPort int
-	Config           Config
-	OpenPortsCount   int
-	mutex            sync.Mutex
+	Config             Config
+	OpenPortsCount     int
+	mutex              sync.Mutex
 }
 
 func (ps *PortScanner) ValidateInputs() error {
@@ -35,18 +34,18 @@ func (ps *PortScanner) ValidateInputs() error {
 	if net.ParseIP(ps.Target) != nil {
 		return nil
 	}
-	
+
 	// Hostname ise IP adresine çözümlemeyi dene
 	ips, err := net.LookupIP(ps.Target)
 	if err != nil || len(ips) == 0 {
 		return fmt.Errorf("geçersiz IP adresi veya hostname: %s", ps.Target)
 	}
-	
+
 	// Port aralığını doğrula
 	if ps.StartPort < 1 || ps.EndPort > 65535 || ps.StartPort > ps.EndPort {
 		return fmt.Errorf("geçersiz port aralığı: %d-%d", ps.StartPort, ps.EndPort)
 	}
-	
+
 	return nil
 }
 
@@ -118,16 +117,16 @@ func (ps *PortScanner) retrieveBanner(conn net.Conn, port int) string {
 	if err != nil {
 		return "Banner yok"
 	}
-	
+
 	banner := strings.TrimSpace(string(buf[:n]))
 	// Yeni satırları tek satıra dönüştür
 	re := regexp.MustCompile(`\r?\n`)
 	banner = re.ReplaceAllString(banner, " | ")
-	
+
 	if len(banner) > ps.Config.MaxBannerLength {
 		banner = banner[:ps.Config.MaxBannerLength] + "..."
 	}
-	
+
 	return banner
 }
 
@@ -178,21 +177,21 @@ func (ps *PortScanner) RunScan() {
 	fmt.Printf("Port aralığı: %d - %d\n", ps.StartPort, ps.EndPort)
 	fmt.Printf("SSL/TLS etkin: %t\n", ps.Config.UseSSL)
 	fmt.Printf("Eşzamanlı tarama sayısı: %d\n", ps.Config.Concurrency)
-	
+
 	totalPorts := ps.EndPort - ps.StartPort + 1
 	fmt.Printf("Toplam %d port taranıyor...\n", totalPorts)
-	
+
 	// Kesme sinyallerini yakala (Ctrl+C)
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
-	
+
 	// Sonuçları topla
 	resultsChan := make(chan string, ps.Config.Concurrency)
-	
+
 	// İlerleme takibi için
 	doneChan := make(chan struct{})
 	scannedPorts := 0
-	
+
 	// Sonuçları göster
 	go func() {
 		for result := range resultsChan {
@@ -200,54 +199,54 @@ func (ps *PortScanner) RunScan() {
 		}
 		doneChan <- struct{}{}
 	}()
-	
+
 	// Eşzamanlı çalışan işçi sayısını sınırla
 	semaphore := make(chan struct{}, ps.Config.Concurrency)
 	var wg sync.WaitGroup
-	
+
 	// Kesme sinyali gelirse taramayı durdur
 	go func() {
 		<-signalChan
 		fmt.Println("\nTarama kullanıcı tarafından durduruldu.")
 		os.Exit(2)
 	}()
-	
+
 	// Port taramasını başlat
 	for port := ps.StartPort; port <= ps.EndPort; port++ {
 		wg.Add(1)
 		semaphore <- struct{}{} // İzin al
-		
+
 		go func(p int) {
 			defer func() {
 				<-semaphore // İzni bırak
 				wg.Done()
-				
+
 				// İlerlemeyi güncelle
 				ps.mutex.Lock()
 				scannedPorts++
 				progress := float64(scannedPorts) / float64(totalPorts) * 100
-				if scannedPorts % (totalPorts/100 + 1) == 0 || scannedPorts == totalPorts {
+				if scannedPorts%(totalPorts/100+1) == 0 || scannedPorts == totalPorts {
 					fmt.Printf("\rİlerleme: %%%.1f (%d/%d)", progress, scannedPorts, totalPorts)
 				}
 				ps.mutex.Unlock()
 			}()
-			
+
 			ps.scanPort(p, resultsChan)
 		}(port)
 	}
-	
+
 	// Tüm taramalar bittiğinde sonuçları kapat
 	go func() {
 		wg.Wait()
 		close(resultsChan)
 	}()
-	
+
 	// Tüm sonuçlar gösterilene kadar bekle
 	<-doneChan
-	
+
 	// İlerleme çıktısını temizle
 	fmt.Println()
-	
+
 	// İstatistikler
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
@@ -264,12 +263,12 @@ func main() {
 	useSSL := flag.Bool("ssl", false, "SSL/TLS destekli bağlantıları etkinleştir")
 	maxBannerLength := flag.Int("maxBannerLength", 1024, "Maksimum banner uzunluğu")
 	concurrency := flag.Int("concurrency", 100, "Eşzamanlı tarama sayısı")
-	
+
 	// Kısa form flag'leri ekle
 	flag.StringVar(target, "t", "", "Hedef IP adresi veya hostname")
 	flag.IntVar(startPort, "s", 1, "Başlangıç portu")
 	flag.IntVar(endPort, "e", 1024, "Bitiş portu")
-	
+
 	flag.Parse()
 
 	if *target == "" {
@@ -283,7 +282,7 @@ func main() {
 		MaxBannerLength: *maxBannerLength,
 		Concurrency:     *concurrency,
 	}
-	
+
 	scanner := PortScanner{
 		Target:    *target,
 		StartPort: *startPort,
@@ -291,11 +290,11 @@ func main() {
 		Config:    config,
 		mutex:     sync.Mutex{},
 	}
-	
+
 	if err := scanner.ValidateInputs(); err != nil {
 		fmt.Println("Hata:", err)
 		os.Exit(1)
 	}
-	
+
 	scanner.RunScan()
 }
