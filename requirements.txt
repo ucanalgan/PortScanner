@@ -1,0 +1,15 @@
+# Core dependencies
+argparse>=1.4.0
+ipaddress>=1.0.23
+
+# Optional dependencies for enhanced functionality
+colorama>=0.4.6  # For colored terminal output
+tqdm>=4.65.0    # For progress bars
+cryptography>=41.0.0  # For enhanced SSL/TLS support
+requests>=2.31.0  # For HTTP banner grabbing
+python-nmap>=0.7.1  # For Nmap integration (optional)
+
+# Development dependencies
+pytest>=7.4.0  # For testing
+black>=23.7.0  # For code formatting
+flake8>=6.1.0  # For linting 
